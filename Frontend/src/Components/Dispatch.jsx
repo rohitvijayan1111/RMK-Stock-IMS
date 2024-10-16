@@ -255,36 +255,44 @@ function Dispatch() {
 
   const handleInputChange = async (id, field, value) => {
     if (field === 'item') {
-      const selectedItem = items.find(item => item.item_id == value);
-      if (selectedItem) {
-        try {
-          const stockResponse = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/retrieveStock/${selectedItem.item_id}`);
-          const stockData = stockResponse.data;
+        const selectedItem = items.find(item => item.item_id == value);
+        if (selectedItem) {
+            try {
+                const expiryResponse = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/expiry/${selectedItem.item_id}`);
+                const expiryData = expiryResponse.data.map(exp => ({ expiry_date: exp.expiry_date, purchase_id: exp.purchase_id }));
 
-          const expiryResponse = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/expiry/${selectedItem.item_id}`);
-          const expiryData = expiryResponse.data.map(exp => ({ expiry_date: exp.expiry_date, purchase_id: exp.purchase_id }));
+                setExpiryDates(prev => ({ ...prev, [id]: expiryData }));
 
-          setItemQuantities(prev => ({ ...prev, [id]: stockData.quantity }));
-          setExpiryDates(prev => ({ ...prev, [id]: expiryData }));
-
-          setRows(prevRows => prevRows.map(row => (
-            row.id === id ? { ...row, item: value } : row
-          )));
-        } catch (error) {
-          console.error("Error fetching item quantity or expiry dates:", error);
+                setRows(prevRows => prevRows.map(row => (
+                    row.id === id ? { ...row, item: value } : row
+                )));
+            } catch (error) {
+                console.error("Error fetching expiry dates:", error);
+            }
         }
-      }
     } else if (field === 'expiry') {
-      const selectedExpiry = expiryDates[id]?.find(exp => exp.expiry_date === value);
-      const purchase_id = selectedExpiry ? selectedExpiry.purchase_id : null;
+        const selectedExpiry = expiryDates[id]?.find(exp => exp.expiry_date === value);
+        const purchase_id = selectedExpiry ? selectedExpiry.purchase_id : null;
 
-      setRows(prevRows => prevRows.map(row => (
-        row.id === id ? { ...row, expiry: value, purchase_id } : row
-      )));
+        if (purchase_id) {
+            try {
+                const stockResponse = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/retrieveStock/${rows.find(r => r.id === id).item}/${purchase_id}`);
+                const stockData = stockResponse.data;
+
+                setItemQuantities(prev => ({ ...prev, [id]: stockData.quantity }));
+
+                setRows(prevRows => prevRows.map(row => (
+                    row.id === id ? { ...row, expiry: value, purchase_id } : row
+                )));
+            } catch (error) {
+                console.error("Error fetching stock data:", error);
+            }
+        }
     } else {
-      setRows(prevRows => prevRows.map(row => (row.id === id ? { ...row, [field]: value } : row)));
+        setRows(prevRows => prevRows.map(row => (row.id === id ? { ...row, [field]: value } : row)));
     }
-  };
+};
+
 
   const handleDeleteRow = (id) => {
     setRows(prevRows => prevRows.filter(row => row.id !== id));
