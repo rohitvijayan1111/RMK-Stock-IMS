@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import Axios from 'axios';
-
+import moment from 'moment';
 const Container = styled.div`
   h1 {
     color: #164863;
@@ -94,12 +94,29 @@ function AvailableStock() {
   useEffect(() => {
     Axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/stocks/availablestock`)
       .then(res => {
-        setCurr(res.data.data); 
-        setFilteredCurr(res.data.data); 
-        console.log(res.data);
+        const data = res.data.data.map(stock => ({
+          ...stock,
+          daysLeftToExpire: calculateDaysLeft(stock.expiry_date),
+          daysSincePurchase: calculateDaysSince(stock.purchase_date),
+        }));
+        setCurr(data); 
+        setFilteredCurr(data); 
+        console.log(data);
       })
       .catch(err => console.error("Error fetching stock data:", err));
   }, []);
+
+  const calculateDaysLeft = (expiryDate) => {
+    const today = moment();
+    const expiry = moment(expiryDate);
+    return expiry.diff(today, 'days');
+  };
+
+  const calculateDaysSince = (purchaseDate) => {
+    const today = moment();
+    const purchase = moment(purchaseDate);
+    return today.diff(purchase, 'days');
+  };
 
   const handleSearch = (e) => {
     const searchValue = e.target.value;
@@ -134,6 +151,9 @@ function AvailableStock() {
             <th>ITEM</th>
             <th>CATEGORY</th>
             <th>QUANTITY</th>
+            <th>EXPIRY DATE</th>
+            <th>DAYS LEFT TO EXPIRE</th>
+            <th>DAYS SINCE PURCHASE</th>
           </tr>
         </thead>
         <tbody>
@@ -142,10 +162,13 @@ function AvailableStock() {
               <td>{item.itemName}</td>
               <td>{item.category}</td>
               <td>{formatNumber(item.quantity)}</td>
+              <td>{moment(item.expiry_date).format('YYYY-MM-DD')}</td>
+              <td>{item.daysLeftToExpire >= 0 ? item.daysLeftToExpire : 'Expired'}</td>
+              <td>{item.daysSincePurchase}</td>
             </tr>
           )) : (
             <tr>
-              <td colSpan="3">No data available</td>
+              <td colSpan="6">No data available</td>
             </tr>
           )}
         </tbody>

@@ -9,12 +9,9 @@ const purchaseRtr = require('./Routes/Purchase');
 const Stocks = require('./Routes/Stocks');
 const Dispatch = require('./Routes/Dispatch');
 const addItems = require('./Routes/addItems');
-const monthlyItem = require('./Routes/Monthly');
-const categoryItem = require('./Routes/Category');
-const compareItem = require('./Routes/Comparison');
 const graphItem = require('./Routes/graph');
-const Itemwise = require('./Routes/ItemWise');
 const Event = require('./Routes/event');
+const Reports=require("./Routes/Report");
 const db = require('./db');
 app.use(cors());
 app.use(express.json());
@@ -23,12 +20,9 @@ app.use('/purchase',purchaseRtr);
 app.use('/stocks',Stocks);
 app.use('/dispatch',Dispatch);
 app.use('/addItems',addItems);
-app.use('/monthly',monthlyItem);
-app.use('/category',categoryItem);
-app.use('/comparison',compareItem);
-app.use('/item',Itemwise);
 app.use('/event',Event);
 app.use('/graph',graphItem);
+app.use('/report',Reports);
 const JWT_SECRET = 'rmkecmessmanagement-IT-2022-2026';
 
 app.post('/login', (req, res) => {
