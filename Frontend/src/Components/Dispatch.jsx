@@ -7,6 +7,7 @@ import styled from 'styled-components';
 import axios from 'axios';
 import { ToastContainer, toast } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
+import dayjs from 'dayjs';
 import { HashLoader } from 'react-spinners'; 
 const Container = styled.div`
   h1 {
@@ -214,191 +215,131 @@ const DeleteButton = styled.button`
   }
 `;
 function Dispatch() {
-  const [rows, setRows] = useState([{ id: Date.now(), sno: 1, item: '', quantity: '', currentQuantity: '', rmk: '', rmd: '', rmkcet: '', school: '' }]);
+  const [rows, setRows] = useState([{ id: Date.now(), item: '', quantity: '', location: '', receiver: '', incharge: '', expiry: '' }]);
   const [items, setItems] = useState([]);
+  const [expiryDates, setExpiryDates] = useState({});  // Now it's an object to hold expiry dates per row
+  const [itemQuantities, setItemQuantities] = useState({}); // Same for item quantities per row
   const numRecordsRef = useRef(null);
   const [selectedDate, setSelectedDate] = useState(null);
   const [loading, setLoading] = useState(false);
-  const handleSubmit = async () => {
-    if (!selectedDate) {
-      toast.error("Please enter the date");
-      return;
-    }
-  
-    const dateFormatted = selectedDate.format('YYYY-MM-DD');
-  
-    const arr = rows.map(row => ({
-      ItemName: row.item.toUpperCase(),
-      CurrentQuantity: row.currentQuantity,
-      RMK: row.rmk || 0, 
-      RMD: row.rmd || 0, 
-      RMKCET: row.rmkcet || 0, 
-      SCHOOL: row.school || 0, 
-      DATE: dateFormatted,
-    }));
-  
-    try {
-      setLoading(true);
-      const response = await axios.post(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/updateDispatch`, { ItemArray: arr });
-      toast.success("Items updated successfully");
-      setRows([{ id: Date.now(), sno: 1, item: '', quantity: '', currentQuantity: '', rmk: '', rmd: '', rmkcet: '', school: '' }]);
-      setSelectedDate(null);
-      numRecordsRef.current.value = '';
-    } catch (error) {
-      console.error("Error updating items:", error);
-      toast.error("Error updating items. Please try again.");
-    }
-    finally {
-      setLoading(false);  
-    }
-  };
-  
+
   useEffect(() => {
     const fetchData = async () => {
       try {
-        const response = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/retrieve`);
+        const response = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/items`);
         setItems(response.data);
       } catch (error) {
         console.error("Error fetching data:", error);
       }
-    };    
+    };
     fetchData();
   }, []);
 
   const handleAddRows = () => {
     const numberOfRows = parseInt(numRecordsRef.current.value, 10);
     if (numberOfRows > 0) {
-      const lastSno = rows.length > 0 ? rows[rows.length - 1].sno : 0;
+      const lastId = Date.now();
       const newRows = Array.from({ length: numberOfRows }, (_, index) => ({
-        id: Date.now() + index,
-        sno: lastSno + index + 1,
+        id: lastId + index,
         item: '',
         quantity: '',
-        currentQuantity: '',
-        rmk: '',
-        rmd: '',
-        rmkcet: '',
-        school: '',
+        location: '',
+        receiver: '',
+        incharge: '',
+        expiry: ''
       }));
       setRows(prevRows => [...prevRows, ...newRows]);
       numRecordsRef.current.value = '';
     }
   };
 
-  const fetchTotalForItem = async (itemName) => {
-    try {
-      const response = await axios.post(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/getQuantity`, {
-        itemName: itemName,
-      });
-      return parseInt(response.data.quantity, 10); 
-    } catch (error) {
-      console.error("Error fetching quantity:", error);
-      return 0; 
-    }
-  };
-  
-  const calculateCurrentQuantity = (row) => {
-    const quantity = parseInt(row.quantity || 0, 10);
-    const rmk = parseInt(row.rmk || 0, 10);
-    const rmd = parseInt(row.rmd || 0, 10);
-    const rmkcet = parseInt(row.rmkcet || 0, 10);
-    const school = parseInt(row.school || 0, 10);
-    return quantity - rmk - rmd - rmkcet - school;
-  };
-
-  const handleAddOneRow = () => {
-    const lastSno = rows.length > 0 ? rows[rows.length - 1].sno : 0;
-    setRows(prevRows => [
-      ...prevRows,
-      { id: Date.now(), sno: lastSno + 1, quantity: '', amount: '' }
-    ]);
-  };
-
   const handleInputChange = async (id, field, value) => {
     if (field === 'item') {
-      const newQuantity = await fetchTotalForItem(value);
-      setRows(prevRows =>
-        prevRows.map(row => {
-          if (row.id === id) {
-            return {
-              ...row,
-              item: value,
-              quantity: newQuantity,
-              rmk: '',
-              rmd: '',
-              rmkcet: '',
-              school: '',
-              currentQuantity: newQuantity, 
-            };
-          }
-          return row;
-        })
-      );
+      const selectedItem = items.find(item => item.item_id == value);
+      if (selectedItem) {
+        try {
+          const stockResponse = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/retrieveStock/${selectedItem.item_id}`);
+          const stockData = stockResponse.data;
+
+          const expiryResponse = await axios.get(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/expiry/${selectedItem.item_id}`);
+          const expiryData = expiryResponse.data.map(exp => ({ expiry_date: exp.expiry_date, purchase_id: exp.purchase_id }));
+
+          setItemQuantities(prev => ({ ...prev, [id]: stockData.quantity }));
+          setExpiryDates(prev => ({ ...prev, [id]: expiryData }));
+
+          setRows(prevRows => prevRows.map(row => (
+            row.id === id ? { ...row, item: value } : row
+          )));
+        } catch (error) {
+          console.error("Error fetching item quantity or expiry dates:", error);
+        }
+      }
+    } else if (field === 'expiry') {
+      const selectedExpiry = expiryDates[id]?.find(exp => exp.expiry_date === value);
+      const purchase_id = selectedExpiry ? selectedExpiry.purchase_id : null;
+
+      setRows(prevRows => prevRows.map(row => (
+        row.id === id ? { ...row, expiry: value, purchase_id } : row
+      )));
     } else {
-      setRows(prevRows =>
-        prevRows.map(row => {
-          if (row.id === id) {
-            const updatedRow = { ...row, [field]: value };
-            const currentQuantity = calculateCurrentQuantity(updatedRow);
-  
-            if (currentQuantity < 0) {
-              toast.error("Dispatch quantity exceeds the current quantity.");
-              return row; 
-            }
-  
-            if (parseInt(updatedRow.rmk || 0, 10) > parseInt(updatedRow.quantity, 10) ||
-                parseInt(updatedRow.rmd || 0, 10) > parseInt(updatedRow.quantity, 10) ||
-                parseInt(updatedRow.rmkcet || 0, 10) > parseInt(updatedRow.quantity, 10) ||
-                parseInt(updatedRow.school || 0, 10) > parseInt(updatedRow.quantity, 10)) {
-              toast.error("Quantities for RMK, RMD, RMKCET, and School cannot be more than the total quantity.");
-              return row; 
-            }
-  
-            return {
-              ...updatedRow,
-              currentQuantity: currentQuantity,
-            };
-          }
-          return row;
-        })
-      );
+      setRows(prevRows => prevRows.map(row => (row.id === id ? { ...row, [field]: value } : row)));
     }
   };
+
   const handleDeleteRow = (id) => {
     setRows(prevRows => prevRows.filter(row => row.id !== id));
   };
-  
+
+  const handleSubmit = async () => {
+    const arr = rows.map(row => ({
+      purchase_id: row.purchase_id,
+      item_id: row.item,
+      quantity: row.quantity,
+      location: row.location,
+      receiver: row.receiver,
+      incharge: row.incharge,
+      expiry: row.expiry,
+      dispatch_date: selectedDate ? selectedDate.format('YYYY-MM-DD') : '', // Format the date
+    }));
+
+    try {
+      setLoading(true);
+      const response = await axios.post(`${import.meta.env.VITE_RMK_MESS_URL}/dispatch/createDispatch`, arr);
+      toast.success("Items dispatched successfully");
+      setRows([{ id: Date.now(), item: '', quantity: '', location: '', receiver: '', incharge: '', expiry: '' }]);
+      setSelectedDate(null);
+    } catch (error) {
+      console.error("Error dispatching items:", error);
+      toast.error("Error dispatching items. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
   return (
     <Container>
+      {loading && (
+        <div style={{
+          position: 'fixed',
+          top: '0',
+          left: '0',
+          width: '100%',
+          height: '100%',
+          display: 'flex',
+          justifyContent: 'center',
+          alignItems: 'center',
+          backgroundColor: 'rgba(255, 255, 255, 0.7)',
+        }}>
+          <HashLoader color="#164863" loading={loading} size={90} />
+        </div>
+      )}
       <h1>DISPATCH</h1>
       <FormContainer>
-      {loading && (
-          <div style={{
-            position: 'fixed',
-            top: '0',
-            left: '0',
-            width: '100%',
-            height: '100%',
-            display: 'flex',
-            justifyContent: 'center',
-            alignItems: 'center',
-            backgroundColor: 'rgba(255, 255, 255, 0.7)',
-          }}>
-            <HashLoader color="#164863" loading={loading} size={90} />
-          </div>
-        )}
         <LocalizationProvider dateAdapter={AdapterDayjs}>
-          <DemoContainer components={['DatePicker']}>
-            <DatePicker label="Basic date picker" className="date-picker"  value={selectedDate} onChange={(newValue) => setSelectedDate(newValue)}/>
-          </DemoContainer>
+          <DatePicker label="Select date" value={selectedDate} onChange={setSelectedDate} />
         </LocalizationProvider>
         <Records>
-          <InputNumber
-            type='number'
-            id='num-records'
-            placeholder='No of rows to be added'
-            ref={numRecordsRef}
-          />
+          <InputNumber type='number' placeholder='No of rows to be added' ref={numRecordsRef} />
         </Records>
         <AddButton onClick={handleAddRows}>Add</AddButton>
       </FormContainer>
@@ -407,92 +348,78 @@ function Dispatch() {
           <tr>
             <th>SNo</th>
             <th>Select Item</th>
-            <th>Total Quantity</th>
-            <th>RMKEC</th>
-            <th>RMDEC</th>
-            <th>RMKCET</th>
-            <th>Schools</th>
-            <th>Current Quantity</th>
+            <th>Expiry Date</th>
+            <th>Quantity Available</th>
+            <th>Quantity</th>
+            <th>Location</th>
+            <th>Receiver</th>
+            <th>Incharge</th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map(row => (
+          {rows.map((row, index) => (
             <tr key={row.id}>
-              <td className='sno'>{row.sno}</td>
+              <td>{index + 1}</td>
               <td>
-                <select className="item-select" value={row.item} onChange={(e) => handleInputChange(row.id, 'item', e.target.value)}>
-                  <option value="">SELECT</option>
-                  {items.map((item, index) => (
-                    <option key={index} value={item.item}>{item.item}</option>
+                <select value={row.item} onChange={(e) => handleInputChange(row.id, 'item', e.target.value)}>
+                  <option value="">Select Item</option>
+                  {items.map(item => (
+                    <option key={item.item_id} value={item.item_id}>
+                      {item.item_name}
+                    </option>
                   ))}
                 </select>
               </td>
               <td>
+                <select value={row.expiry} onChange={(e) => handleInputChange(row.id, 'expiry', e.target.value)}>
+                  <option value="">Select Expiry Date</option>
+                  {expiryDates[row.id]?.map((exp, idx) => (
+                    <option key={idx} value={exp.expiry_date}>
+                      {dayjs(exp.expiry_date).format("YYYY-MM-DD")}
+                    </option>
+                  ))}
+                </select>
+              </td>
+              <td>{itemQuantities[row.id] || "N/A"}</td>
+              <td>
                 <input
                   type="number"
-                  className="item-input"
                   value={row.quantity}
-                  placeholder="Total Quantity"
                   onChange={(e) => handleInputChange(row.id, 'quantity', e.target.value)}
-                  readOnly
                 />
               </td>
               <td>
                 <input
-                  type="number"
-                  className="item-input"
-                  value={row.rmk}
-                  placeholder="Quantity"
-                  onChange={(e) => handleInputChange(row.id, 'rmk', e.target.value)}
+                  type="text"
+                  value={row.location}
+                  onChange={(e) => handleInputChange(row.id, 'location', e.target.value)}
                 />
               </td>
               <td>
                 <input
-                  type="number"
-                  className="item-input"
-                  value={row.rmd}
-                  placeholder="Quantity"
-                  onChange={(e) => handleInputChange(row.id, 'rmd', e.target.value)}
+                  type="text"
+                  value={row.receiver}
+                  onChange={(e) => handleInputChange(row.id, 'receiver', e.target.value)}
                 />
               </td>
               <td>
                 <input
-                  type="number"
-                  className="item-input"
-                  value={row.rmkcet}
-                  placeholder="Quantity"
-                  onChange={(e) => handleInputChange(row.id, 'rmkcet', e.target.value)}
+                  type="text"
+                  value={row.incharge}
+                  onChange={(e) => handleInputChange(row.id, 'incharge', e.target.value)}
                 />
               </td>
               <td>
-                <input
-                  type="number"
-                  className="item-input"
-                  value={row.school}
-                  placeholder="Quantity"
-                  onChange={(e) => handleInputChange(row.id, 'school', e.target.value)}
-                />
-              </td>
-              <td>
-                <input
-                  type="number"
-                  className="item-input"
-                  value={row.currentQuantity}
-                  placeholder="Current Quantity"
-                  onChange={(e) => handleInputChange(row.id, 'currentQuantity', e.target.value)}
-                />
-              </td>
-              <td>
-              <DeleteButton onClick={() => handleDeleteRow(row.id)}>Delete</DeleteButton>
+                <DeleteButton onClick={() => handleDeleteRow(row.id)}>Delete</DeleteButton>
               </td>
             </tr>
           ))}
         </tbody>
       </ItemTable>
+
       <SubmitContainer>
-        <SubmitButton className="add-button" onClick={handleAddOneRow}>Add</SubmitButton>
-        <SubmitButton onClick={handleSubmit}  disabled={loading}>Submit</SubmitButton>
+        <SubmitButton onClick={handleSubmit}>Submit Dispatch</SubmitButton>
       </SubmitContainer>
       <ToastContainer />
     </Container>
